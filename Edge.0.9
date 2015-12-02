@@ -1,0 +1,220 @@
+echo "Edge 0.9 makefile"
+
+echo "wget compatible URL for your edge.conf (You need a 0.9 conf!) ? (Leave empty to download a default)"
+read edgeconfurl
+
+if test -z "$edgeconfurl"
+then
+ export edgeconfurl=http://www.codebin.dk/edge09/edge.conf
+fi
+
+echo "Which eggdrop should we install?"
+echo "1: 1.6.13"
+echo "2: 1.6.13+ipv6"
+echo "3: 1.6.16"
+echo "4: 1.6.16+ssl"
+echo "5: 1.6.19"
+echo "6: 1.6.19+ssl"
+
+read version
+export ssldir=""
+
+if [ $version -eq 1 ]; then
+ echo "Installing eggdrop 1.6.13"
+ export eggdrop=eggdrop1.6.13.tar.gz
+ export eggdir=eggdrop1.6.13
+fi
+
+if [ $version -eq 2 ]; then
+ echo "Installing eggdrop 1.6.13+ipv6"
+ export eggdrop=eggdrop1.6.13.tar.gz
+ export eggdir=eggdrop1.6.13
+fi
+
+if [ $version -eq 3 ]; then
+ echo "Installing eggdrop 1.6.16"
+ export eggdrop=eggdrop1.6.16.tar.gz
+ export eggdir=eggdrop1.6.16
+fi
+
+if [ $version -eq 4 ]; then
+ echo "Installing eggdrop 1.6.16+ssl"
+ export eggdrop=eggdrop1.6.16.tar.gz
+ export eggdir=eggdrop1.6.16
+ echo "Dir to OpenSSL ? (leave empty to autodetect, if not found enter dir)"
+ read ssldir
+fi
+
+if [ $version -eq 6 ]; then
+ echo "Installing eggdrop1.6.19+ctcpfix+ssl"
+ export eggdrop=eggdrop1.6.19+ctcpfix.tar.gz
+ export eggdir=eggdrop1.6.19
+ echo "Dir to OpenSSL ? (leave empty to autodetect, if not found enter dir)"
+ read ssldir
+fi
+
+if [ $version -eq 5 ]; then
+ echo "Installing eggdrop1.6.19+ctcpfix"
+ export eggdrop=eggdrop1.6.19+ctcpfix.tar.gz
+ export eggdir=eggdrop1.6.19
+fi
+
+echo "Where do you want to download eggdrop from?"
+echo "0: Local /usr/src/eggdrop/1.6/ (Only use this option if you are sure the files are there)"
+echo "1: ftp.eggheads.org"
+echo "2: ftp.club-internet.fr"
+echo "3: ftp.key2peace.org"
+echo "4: Use the file already on shell (in this dir)"
+
+read eggthere
+
+echo "Where to install Edge? [Edge] (Do not use ~/ the path should be relative from your login dir)"
+read dest
+
+if test -z "$dest"
+then
+ export dest="Edge"
+fi
+
+echo "COMPILING eggdrop"
+
+cd
+
+if [ $eggthere -eq 0 ]; then
+ cp /usr/src/eggdrop/1.6/$eggdrop ./
+fi
+
+if [ $eggthere -eq 1 ]; then
+ wget ftp://ftp.eggheads.org/pub/eggdrop/source/1.6/$eggdrop
+fi
+
+if [ $eggthere -eq 2 ]; then
+ wget ftp://ftp.club-internet.fr/pub/eggdrop/source/1.6/$eggdrop
+fi
+
+if [ $eggthere -eq 3 ]; then
+ wget ftp://ftp.key2peace.org/pub/eggheads/eggdrop/source/1.6/$eggdrop
+fi
+
+tar zxvf $eggdrop
+rm $eggdrop
+cd $eggdir
+
+echo "Any ./configure arguments you need NOT including --with-ssl-dir?"
+echo "If you need to compile any special modules, login with a new ssh and download the modules now (Place them as their readme says)."
+read arguments
+
+echo "All settings done, compiling."
+
+if [ $version -eq 2 ]; then
+#compile ipv6
+ echo "Patching ipv6"
+ wget http://www.codebin.dk/edge09/includes/eggdrop1.6.13+ipv6.patch
+ patch -p1 < eggdrop1.6.13+ipv6.patch
+ echo "ipv6 support enabled"
+fi
+
+if [ $version -eq 4 ]; then
+#compile ssl
+ echo "Installing eggdrop 1.6.16+ssl"
+ wget http://www.codebin.dk/edge09/includes/eggdrop1.6.16-ssl.diff.gz
+ gzip -d eggdrop1.6.16-ssl.diff.gz
+ patch -p1 < eggdrop1.6.16-ssl.diff
+ echo "SSL support compiled!"
+fi
+
+if [ $version -eq 6 ]; then
+#compile ssl
+ echo "Installing eggdrop 1.6.19+ssl"
+ wget http://www.egghelp.org/files/patches/eggdrop-1.6.19-ssl_and_md5_and_thread-durex.patch.gz
+ gzip -d eggdrop-1.6.19-ssl_and_md5_and_thread-durex.patch.gz
+ patch -p1 < eggdrop-1.6.19-ssl_and_md5_and_thread-durex.patch
+ echo "SSL support compiled!"
+fi
+
+if test -z "$ssldir"
+then
+ ./configure $arguments
+else
+ ./configure --with-ssl=$ssldir $arguments
+fi
+
+if [ $? -ne 0 ]; then
+ echo
+ echo
+ echo "Error during configure!"
+ exit -1
+ echo
+ echo
+fi
+
+make config
+
+if [ $? -ne 0 ]; then
+ echo "Error during make config!"
+ exit -1
+fi
+
+make
+
+if [ $? -ne 0 ]; then
+ echo "Error during make!"
+ echo "There is a known problem compiling eggdrop1.6.16 on some shells, trying the fix"
+ make clean
+ ./configure
+ #Some shells will need this appended to config.h to work.
+ echo "#define HAVE_STDARG_H 1" >> config.h
+ make config
+ make
+fi
+
+if [ $? -ne 0 ]; then
+ echo "Error during make!"
+ exit -1
+fi
+
+make install DEST=${HOME}/$dest
+
+if [ $? -ne 0 ]; then
+ echo "Error during make install!"
+ exit -1
+fi
+
+cd
+
+rm -Rf $eggdrop $eggdir
+
+cd $dest
+
+rm -Rf doc scripts eggdrop.conf text/motd README autobotchk eggdrop.*.conf compat.tcl
+
+echo "Getting Edge botnet files"
+mkdir edge
+cd edge
+rm edgefiles.php
+wget http://edge09.codebin.dk/edgefiles.php
+chmod +x edgefiles.php
+./edgefiles.php
+rm edgefiles.php
+cd ..
+
+wget http://edge09.codebin.dk/makebot.sh
+wget http://edge09.codebin.dk/makebot.ipv6.sh
+wget http://edge09.codebin.dk/autobotchk.sh
+wget http://edge09.codebin.dk/edge.tcl
+
+chmod +x makebot.sh makebot.ipv6.sh autobotchk.sh
+ln -s eggdrop Edge
+ln -s makebot.sh makebot
+ln -s autobotchk.sh autobotchk
+ln -s makebot.ipv6.sh makebot.ipv6
+
+wget $edgeconfurl
+
+clear
+echo "Edge botpack is developed by MORA@EFNet with the help of Artoo Nitr8^ BVGorp fiend McHowie qip Kyr FantaGirl"
+echo "Please do not bug #egghelp with Edge questions, Please do not bug me with general eggdrop questions"
+echo ">> See www.codebin.dk for more info <<"
+echo
+echo
+echo "Edge botpack installed in $dest, use ./makebot to generate botconfigs or ./makebot.ipv6 for ipv6 bots."
